@@ -1,0 +1,357 @@
+{
+  "metrics": {
+    "Naive Bayes": {
+      "TP": 350,
+      "FP": 180,
+      "FN": 206,
+      "TN": 280,
+      "accuracy": 0.6200787401574803,
+      "precision": 0.660377358490566,
+      "recall": 0.6294964028776978,
+      "f1": 0.6445672191528544
+    },
+    "Perceptron": {
+      "TP": 282,
+      "FP": 136,
+      "FN": 274,
+      "TN": 324,
+      "accuracy": 0.5964566929133859,
+      "precision": 0.6746411483253588,
+      "recall": 0.5071942446043165,
+      "f1": 0.5790554414784393
+    },
+    "Logistic Reg": {
+      "TP": 313,
+      "FP": 153,
+      "FN": 243,
+      "TN": 307,
+      "accuracy": 0.610236220472441,
+      "precision": 0.6716738197424893,
+      "recall": 0.5629496402877698,
+      "f1": 0.6125244618395304
+    }
+  },
+  "error_by_credibility": {
+    "Naive Bayes": {
+      "medium": {
+        "total": 418,
+        "errors": 167,
+        "error_rate": 0.39952153110047844
+      },
+      "high (unreliable speaker)": {
+        "total": 354,
+        "errors": 123,
+        "error_rate": 0.3474576271186441
+      },
+      "low (reliable speaker)": {
+        "total": 244,
+        "errors": 96,
+        "error_rate": 0.39344262295081966
+      }
+    },
+    "Perceptron": {
+      "medium": {
+        "total": 418,
+        "errors": 167,
+        "error_rate": 0.39952153110047844
+      },
+      "high (unreliable speaker)": {
+        "total": 354,
+        "errors": 152,
+        "error_rate": 0.4293785310734463
+      },
+      "low (reliable speaker)": {
+        "total": 244,
+        "errors": 91,
+        "error_rate": 0.3729508196721312
+      }
+    },
+    "Logistic Reg": {
+      "medium": {
+        "total": 418,
+        "errors": 167,
+        "error_rate": 0.39952153110047844
+      },
+      "high (unreliable speaker)": {
+        "total": 354,
+        "errors": 139,
+        "error_rate": 0.3926553672316384
+      },
+      "low (reliable speaker)": {
+        "total": 244,
+        "errors": 90,
+        "error_rate": 0.36885245901639346
+      }
+    }
+  },
+  "error_by_length": {
+    "Naive Bayes": {
+      "medium (9-15 words)": {
+        "total": 374,
+        "errors": 131,
+        "error_rate": 0.3502673796791444
+      },
+      "long (16+ words)": {
+        "total": 570,
+        "errors": 221,
+        "error_rate": 0.387719298245614
+      },
+      "short (<=8 words)": {
+        "total": 72,
+        "errors": 34,
+        "error_rate": 0.4722222222222222
+      }
+    },
+    "Perceptron": {
+      "medium (9-15 words)": {
+        "total": 374,
+        "errors": 153,
+        "error_rate": 0.4090909090909091
+      },
+      "long (16+ words)": {
+        "total": 570,
+        "errors": 223,
+        "error_rate": 0.3912280701754386
+      },
+      "short (<=8 words)": {
+        "total": 72,
+        "errors": 34,
+        "error_rate": 0.4722222222222222
+      }
+    },
+    "Logistic Reg": {
+      "medium (9-15 words)": {
+        "total": 374,
+        "errors": 148,
+        "error_rate": 0.39572192513368987
+      },
+      "long (16+ words)": {
+        "total": 570,
+        "errors": 217,
+        "error_rate": 0.38070175438596493
+      },
+      "short (<=8 words)": {
+        "total": 72,
+        "errors": 31,
+        "error_rate": 0.4305555555555556
+      }
+    }
+  },
+  "top_subjects": {
+    "Naive Bayes": {
+      "legal-issues": {
+        "total": 5,
+        "errors": 5,
+        "error_rate": 1.0
+      },
+      "animals": {
+        "total": 5,
+        "errors": 4,
+        "error_rate": 0.8
+      },
+      "climate-change": {
+        "total": 8,
+        "errors": 5,
+        "error_rate": 0.625
+      },
+      "afghanistan": {
+        "total": 8,
+        "errors": 5,
+        "error_rate": 0.625
+      },
+      "debates": {
+        "total": 5,
+        "errors": 3,
+        "error_rate": 0.6
+      }
+    },
+    "Perceptron": {
+      "legal-issues": {
+        "total": 5,
+        "errors": 4,
+        "error_rate": 0.8
+      },
+      "afghanistan": {
+        "total": 8,
+        "errors": 5,
+        "error_rate": 0.625
+      },
+      "diversity": {
+        "total": 8,
+        "errors": 5,
+        "error_rate": 0.625
+      },
+      "animals": {
+        "total": 5,
+        "errors": 3,
+        "error_rate": 0.6
+      },
+      "message-machine-2012": {
+        "total": 5,
+        "errors": 3,
+        "error_rate": 0.6
+      }
+    },
+    "Logistic Reg": {
+      "legal-issues": {
+        "total": 5,
+        "errors": 5,
+        "error_rate": 1.0
+      },
+      "afghanistan": {
+        "total": 8,
+        "errors": 6,
+        "error_rate": 0.75
+      },
+      "corrections-and-updates": {
+        "total": 12,
+        "errors": 8,
+        "error_rate": 0.6666666666666666
+      },
+      "families": {
+        "total": 6,
+        "errors": 4,
+        "error_rate": 0.6666666666666666
+      },
+      "diversity": {
+        "total": 8,
+        "errors": 5,
+        "error_rate": 0.625
+      }
+    }
+  },
+  "confident_errors": {
+    "Naive Bayes": [
+      {
+        "text": "More than 1,000 American soldiers have lost their lives in Afghanistan in the last 27 months. This is more than the combined total of the nine years before.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4999,
+        "subject": "afghanistan",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "While (Charlie Crist) was governor, utility costs went up 30 percent and went from below the national average to above the national average. Since I got elected, utility rates have come down 11 percent and now we are below the average.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4998,
+        "subject": "debates",
+        "credibility": "medium"
+      },
+      {
+        "text": "The Baucus bill \"contains provisions that would send massive federal subsidies directly to both private insurance plans and government-chartered cooperatives that pay for elective abortion.\"",
+        "true": "REAL",
+        "pred": "FAKE",
+        "score": 0.4987,
+        "subject": "abortion",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "Says If you compare the Portland Metro area to the CDCs statewide cavity rates ... the Portland Metro area would actually rank as having the 15th lowest cavity rate in the U.S.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4985,
+        "subject": "public-health",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "In the 2012 election, there were more votes cast than registered voters in St. Lucie County, and Palm Beach County had 141 percent turnout.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4985,
+        "subject": "elections",
+        "credibility": "high (unreliable speaker)"
+      }
+    ],
+    "Perceptron": [
+      {
+        "text": "Says if you try to hide marijuana in a hemp field, it becomes worthless. The THC goes away.",
+        "true": "REAL",
+        "pred": "FAKE",
+        "score": 42,
+        "subject": "drugs",
+        "credibility": "low (reliable speaker)"
+      },
+      {
+        "text": "Says that his transportation budget and Ohio Turnpike plan would make sure we have lower tolls than weve had through the history of the turnpike.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -41,
+        "subject": "transportation",
+        "credibility": "medium"
+      },
+      {
+        "text": "Its been since 1888 that a Senate of a different party than the president in the White House confirmed a Supreme Court nominee.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -38,
+        "subject": "congress",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "Beaverton enjoys the most diverse population (by percentage of population) among Oregon cities.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -38,
+        "subject": "diversity",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "In nine Democratic debates, Weve not had one question about a womans right to make her own decisions about reproductive health care, not one question.",
+        "true": "REAL",
+        "pred": "FAKE",
+        "score": 36,
+        "subject": "abortion",
+        "credibility": "low (reliable speaker)"
+      }
+    ],
+    "Logistic Reg": [
+      {
+        "text": "Says that his transportation budget and Ohio Turnpike plan would make sure we have lower tolls than weve had through the history of the turnpike.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4996,
+        "subject": "transportation",
+        "credibility": "medium"
+      },
+      {
+        "text": "Says if you try to hide marijuana in a hemp field, it becomes worthless. The THC goes away.",
+        "true": "REAL",
+        "pred": "FAKE",
+        "score": 0.4994,
+        "subject": "drugs",
+        "credibility": "low (reliable speaker)"
+      },
+      {
+        "text": "More than 1,000 American soldiers have lost their lives in Afghanistan in the last 27 months. This is more than the combined total of the nine years before.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4991,
+        "subject": "afghanistan",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "Beaverton enjoys the most diverse population (by percentage of population) among Oregon cities.",
+        "true": "FAKE",
+        "pred": "REAL",
+        "score": -0.4991,
+        "subject": "diversity",
+        "credibility": "high (unreliable speaker)"
+      },
+      {
+        "text": "In the 2000 Florida election, at least 1,100 eligible voters were wrongly dropped from voting rolls in an attempt to purge a list of felons. Many of those who were dropped showed up to vote and were told they could not.",
+        "true": "REAL",
+        "pred": "FAKE",
+        "score": 0.4984,
+        "subject": "elections",
+        "credibility": "low (reliable speaker)"
+      }
+    ]
+  },
+  "three_way_agreement": {
+    "all_correct": 459,
+    "all_wrong": 240,
+    "total": 1016,
+    "majority_vote_f1": 0.6108
+  }
+}
