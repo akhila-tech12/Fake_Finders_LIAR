@@ -336,8 +336,13 @@ def retrieve_evidence(statement: str, n_keywords: int = 3) -> str:
         → contradiction gives model a factual signal!
     """
     words    = re.sub(r"[^a-z\s]", " ", statement.lower()).split()
-    keywords = [w for w in words if w not in STOPWORDS and len(w) > 3][:n_keywords]
-
+    # Priority words — numbers and specific nouns are most useful
+    numbers  = [w for w in words if w.isdigit() or '%' in w]
+    content  = [w for w in words if w not in STOPWORDS 
+                and len(w) > 4 and not w.isdigit()]
+    
+    # Combine: content words first, then numbers
+    keywords = (content + numbers)[:n_keywords]
     if not keywords:
         return ""
 
