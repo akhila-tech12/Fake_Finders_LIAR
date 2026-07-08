@@ -52,15 +52,15 @@ import math
 import json
 from collections import defaultdict
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from data_loader               import map_label
 from feature_extractor         import speaker_fake_rate
 from classification_evaluator  import ClassificationEvaluator, print_report
 
-import naive_bayes        as nb
-import perceptron         as perc
-import logistic_regression as lr
+from classical import naive_bayes        as nb
+from classical import perceptron         as perc
+from classical import logistic_regression as lr
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -216,7 +216,7 @@ def show_confident_errors(texts, labels_01, rows, preds_01, scores, model_name: 
 
 if __name__ == "__main__":
 
-    BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE       = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     TRAIN_PATH = os.path.join(BASE, "data", "train.tsv")
     TEST_PATH  = os.path.join(BASE, "data", "test.tsv")
     RESULTS    = os.path.join(BASE, "results")

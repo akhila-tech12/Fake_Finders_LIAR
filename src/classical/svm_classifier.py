@@ -42,7 +42,7 @@ from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MaxAbsScaler
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from feature_extractor       import FeatureBuilder
 from classification_evaluator import ClassificationEvaluator, print_report

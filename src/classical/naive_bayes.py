@@ -27,7 +27,7 @@ import os
 import sys
 
 # ── Make src importable regardless of working directory ───────────────────────
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from data_loader          import load_dataset, preview_dataset
 from classification_evaluator import ClassificationEvaluator, print_report

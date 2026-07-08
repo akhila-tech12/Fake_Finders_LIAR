@@ -2,4 +2,14 @@
 **/.DS_Store
 __pycache__/
 *.pyc
+
+# virtual environments
 venv/
+venv_bert/
+
+# large model weights — download from Kaggle or GitHub release (see README)
+models/**/*.pt
+models/**/*.bin
+
+# streamlit
+.streamlit/

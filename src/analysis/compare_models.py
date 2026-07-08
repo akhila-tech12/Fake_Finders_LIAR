@@ -27,11 +27,11 @@ import sys
 import json
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from feature_extractor        import FeatureBuilder
-from svm_classifier           import SVMClassifier
-from mlp_classifier           import MLPFakeNewsClassifier
+from classical.svm_classifier import SVMClassifier
+from classical.mlp_classifier import MLPFakeNewsClassifier
 from classification_evaluator import print_report
 from data_loader              import map_label
 
@@ -92,7 +92,7 @@ def print_comparison(results: list[dict]) -> None:
 
 if __name__ == "__main__":
 
-    BASE      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE      = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     TRAIN_PATH = os.path.join(BASE, "data", "train.tsv")
     TEST_PATH  = os.path.join(BASE, "data", "test.tsv")
     RESULTS    = os.path.join(BASE, "results")

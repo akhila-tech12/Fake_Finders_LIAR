@@ -70,7 +70,7 @@ try:
 except ImportError:
     _CHROMA_OK = False
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from classification_evaluator import ClassificationEvaluator, print_report
 from feature_extractor        import retrieve_evidence, speaker_fake_rate

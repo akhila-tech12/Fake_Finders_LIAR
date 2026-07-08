@@ -24,10 +24,10 @@ Two voting strategies:
 Run WITHOUT BERT (Mac only, ~10 min):
     cd ~/fake-finders-liar
     source venv/bin/activate
-    python src/ensemble_classifier.py
+    python src/analysis/ensemble_classifier.py
 
 Run WITH BERT (after downloading from Kaggle):
-    python src/ensemble_classifier.py --bert_path models/bert_film_v3
+    python src/analysis/ensemble_classifier.py --bert_path models/bert_film_v3
 
 Author  : Akhila Pavithran, Rajana
 Project : Fake Finders -- NLP Master Project, Bamberg SS 2026
@@ -47,15 +47,15 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing  import MaxAbsScaler
 from sklearn.pipeline       import Pipeline
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from feature_extractor        import FeatureBuilder, metadata_features
 from classification_evaluator import ClassificationEvaluator, print_report
 from data_loader              import map_label
 
-import naive_bayes        as nb
-import perceptron         as perc
-import logistic_regression as lr
+from classical import naive_bayes        as nb
+from classical import perceptron         as perc
+from classical import logistic_regression as lr
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -377,7 +377,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE       = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     TRAIN_PATH = os.path.join(BASE, "data", "train.tsv")
     TEST_PATH  = os.path.join(BASE, "data", "test.tsv")
     RESULTS    = os.path.join(BASE, "results")

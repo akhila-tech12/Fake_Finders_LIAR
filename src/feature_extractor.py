@@ -48,6 +48,12 @@ STOPWORDS: frozenset = frozenset({
 WIKIPEDIA_API = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
 USER_AGENT    = "FakeFinders-NLP/1.0 (Bamberg University)"
 
+_EVIDENCE_CACHE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "evidence_cache.json"
+)
+_evidence_cache: dict[str, str] = {}
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Tokenisation
@@ -163,9 +169,10 @@ class TFIDFVectorizer:
             if df >= self.min_df
         }
 
-        # Keep top-k by IDF (highest IDF = most informative)
+        # Keep top-k by document frequency descending (most-common terms that
+        # still meet min_df), matching sklearn's default behaviour.
         top_tokens = sorted(
-            idf_all.items(), key=lambda kv: kv[1], reverse=True
+            idf_all.items(), key=lambda kv: doc_freq[kv[0]], reverse=True
         )[: self.max_features]
 
         self.vocab_ = {tok: i for i, (tok, _)  in enumerate(top_tokens)}
@@ -323,6 +330,9 @@ def retrieve_evidence(statement: str, n_keywords: int = 3) -> str:
         2. If empty, search top-2
         3. If empty, search top-1
 
+    Results are cached in ``data/evidence_cache.json`` so repeated calls
+    for the same statement skip the network round-trip entirely.
+
     Args:
         statement   : raw claim text.
         n_keywords  : max keywords to extract (default 3).
@@ -335,23 +345,49 @@ def retrieve_evidence(statement: str, n_keywords: int = 3) -> str:
         returns   = "Unemployment in the United States was 3.8%..."
         → contradiction gives model a factual signal!
     """
+    global _evidence_cache
+
+    # ── load cache from disk on first call ───────────────────────────────────
+    if not _evidence_cache:
+        try:
+            with open(_EVIDENCE_CACHE_PATH, "r", encoding="utf-8") as fh:
+                _evidence_cache = json.load(fh)
+        except Exception:
+            _evidence_cache = {}
+
+    # ── cache hit ─────────────────────────────────────────────────────────────
+    if statement in _evidence_cache:
+        return _evidence_cache[statement]
+
+    # ── cache miss: fetch from Wikipedia ─────────────────────────────────────
     words    = re.sub(r"[^a-z\s]", " ", statement.lower()).split()
     # Priority words — numbers and specific nouns are most useful
     numbers  = [w for w in words if w.isdigit() or '%' in w]
-    content  = [w for w in words if w not in STOPWORDS 
+    content  = [w for w in words if w not in STOPWORDS
                 and len(w) > 4 and not w.isdigit()]
-    
+
     # Combine: content words first, then numbers
     keywords = (content + numbers)[:n_keywords]
     if not keywords:
+        _evidence_cache[statement] = ""
         return ""
 
+    result = ""
     for k in range(len(keywords), 0, -1):
         result = _fetch_wikipedia(" ".join(keywords[:k]))
         if result:
-            return result
+            break
 
-    return ""
+    # ── store in cache and persist to disk ───────────────────────────────────
+    _evidence_cache[statement] = result
+    try:
+        os.makedirs(os.path.dirname(_EVIDENCE_CACHE_PATH), exist_ok=True)
+        with open(_EVIDENCE_CACHE_PATH, "w", encoding="utf-8") as fh:
+            json.dump(_evidence_cache, fh, indent=2)
+    except Exception:
+        pass  # non-fatal: next run will re-fetch
+
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════

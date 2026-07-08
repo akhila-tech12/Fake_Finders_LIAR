@@ -71,7 +71,7 @@ def predict(statement, model_path, meta_str):
     combined  = f"{statement} [SEP] {evidence}" if evidence else statement
 
     enc    = tokenizer(
-        statement, truncation=True, padding="max_length",
+        combined, truncation=True, padding="max_length",
         max_length=256, return_tensors="pt",
     )
     meta_t = torch.tensor([meta], dtype=torch.float32)
@@ -83,7 +83,7 @@ def predict(statement, model_path, meta_str):
         )
         probs = torch.softmax(logits, dim=1)
         pred  = int(torch.argmax(probs).item())
-        conf  = float(probs[0][1].item())
+        conf  = float(probs[0][pred].item())
 
     return {
         "label"     : "FAKE" if pred == 1 else "REAL",

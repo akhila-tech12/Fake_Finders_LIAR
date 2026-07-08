@@ -1,0 +1,26 @@
+# BERT inference subprocess only (Python 3.12)
+# Used by venv_bert/ — called as a subprocess from the Streamlit app.
+# Usage: python3.12 -m venv venv_bert && pip install -r requirements_bert.txt
+certifi==2026.6.17
+charset-normalizer==3.4.8
+filelock==3.29.5
+fsspec==2026.6.0
+huggingface-hub==0.17.3
+idna==3.18
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+mpmath==1.3.0
+networkx==3.6.1
+numpy==2.5.1
+packaging==26.2
+PyYAML==6.0.3
+regex==2026.6.28
+requests==2.34.2
+safetensors==0.8.0
+sympy==1.14.0
+tokenizers==0.14.1
+torch==2.12.1
+tqdm==4.68.3
+transformers==4.35.0
+typing_extensions==4.16.0
+urllib3==2.7.0

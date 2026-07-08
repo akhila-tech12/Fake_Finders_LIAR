@@ -95,7 +95,7 @@ except ImportError as _e:
     _DEPS_OK = False
     _DEPS_ERR = str(_e)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add src/ to path
 
 from classification_evaluator import print_report
 from feature_extractor         import metadata_features

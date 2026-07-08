@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Fake Finders" — a University of Bamberg NLP master project (SS 2026) that benchmarks a
 progression of models for **binary fake-news detection** on the **LIAR dataset**. Every
-classifier is implemented and evaluated in `src/`, and the results feed a Streamlit demo UI.
+classifier lives in `src/`, and the results feed a Streamlit demo UI.
 
 The task is deliberately binary: the six LIAR labels are collapsed to `FAKE` / `REAL` and
 the ambiguous `half-true` class is **dropped entirely** (see `data_loader.map_label`). Any
@@ -14,101 +14,100 @@ new model or data path must apply the same mapping to stay comparable with exist
 
 ## Commands
 
-There is no build system, test runner, or `requirements.txt`. Everything is run as a plain
-script against one of the virtual environments.
-
 **Virtual environments (two, with different Python versions — do not mix):**
-- `venv/` (Python 3.14) — classical models, sklearn, Streamlit. Also has torch. Use this for
-  everything except BERT inference. (`src/venv/` is a stale duplicate — ignore it.)
-- `venv_bert/` (Python 3.12) — torch + transformers only. Used **as a subprocess** for BERT
-  inference so the Streamlit app doesn't need to import torch in-process.
+- `venv/` (Python 3.14) — classical models, sklearn, Streamlit, pytest. Install:
+  `pip install -r requirements.txt`. Use this for everything except BERT inference.
+- `venv_bert/` (Python 3.12) — torch + transformers only (`requirements_bert.txt`). Used
+  **as a subprocess** for BERT inference so the Streamlit app doesn't import torch in-process.
+
+**Tests:**
+```bash
+venv/bin/python -m pytest tests/              # full suite
+venv/bin/python -m pytest tests/test_feature_extractor.py -k tfidf   # single file / pattern
+```
 
 **Run one model** (each script is self-contained: loads data, trains, evaluates, prints a report):
 ```bash
-venv/bin/python src/naive_bayes.py        # also: perceptron, logistic_regression, svm_classifier, mlp_classifier
+venv/bin/python src/classical/naive_bayes.py   # also: perceptron, logistic_regression,
+                                               #       svm_classifier, mlp_classifier
 ```
 
-**Run the full comparison table** (baselines are hardcoded; trains SVM + MLP live; pulls BERT/RAG from results/*.json):
+**Analysis:**
 ```bash
-venv/bin/python src/compare_models.py
+venv/bin/python src/analysis/compare_models.py       # full comparison table (trains SVM+MLP live)
+venv/bin/python src/analysis/ensemble_classifier.py  # add --bert_path models/bert_film_v3 for BERT
 ```
 
-**Run the ensemble** (majority + F1-weighted voting):
+**Demo UI:**
 ```bash
-venv/bin/python src/ensemble_classifier.py                              # classical only (Mac, ~10 min)
-venv/bin/python src/ensemble_classifier.py --bert_path models/bert_film_v3
-```
-
-**Run the demo UI:**
-```bash
-venv/bin/streamlit run src/app_beautiful.py    # current UI (app.py is the older variant)
+venv/bin/streamlit run src/app/app.py
 ```
 
 **BERT inference locally** (CPU, called by the app as a subprocess):
 ```bash
-venv_bert/bin/python src/bert_predict.py "statement text" models/bert_film_v3 "0.5,0.5,0.5"
+venv_bert/bin/python src/bert/bert_predict.py "statement text" models/bert_film_v3 "0.5,0.5,0.5"
 ```
 
-**"Tests"** — several core modules run assertion-based self-checks or smoke tests via `__main__`:
-```bash
-venv/bin/python src/classification_evaluator.py   # asserts on metric edge cases
-venv/bin/python src/feature_extractor.py          # tokenizer/TF-IDF/metadata/Wikipedia smoke test
-venv/bin/python src/data_loader.py                # prints split sizes + class distribution
-```
+Shared modules also run standalone smoke tests via `__main__`
+(e.g. `venv/bin/python src/feature_extractor.py`).
 
-**BERT/FiLM training is NOT run locally.** `bert_classifier.py`, `rag_classifier.py`,
-`bert_metadata_classifier.py`, `metadatarachna.py`, and `bert_film_*.py` are written to run on
-**Google Colab / Kaggle GPUs**. The trained artifact is committed to `models/bert_film_v3/`
-(`model.pt` + tokenizer) and consumed at inference time.
+**BERT/FiLM training is NOT run locally.** Everything in `src/bert/` except `bert_predict.py`
+is written for **Google Colab / Kaggle GPUs**. The trained artifact lives in
+`models/bert_film_v3/` (weights are gitignored — ~840 MB, obtained from Kaggle) and is
+consumed at inference time.
 
 ## Architecture
 
-Three shared modules are the single source of truth; every model imports from them. Each script
-starts with `sys.path.insert(0, dirname(__file__))` so imports resolve regardless of CWD, and
-paths are derived from the file location, so scripts can be run from anywhere.
+Three shared modules at the top of `src/` are the single source of truth; everything else
+imports them. Entry scripts insert `src/` into `sys.path`
+(`sys.path.insert(0, dirname(dirname(abspath(__file__))))`), so imports resolve regardless
+of CWD, and all data/model paths are derived from file locations — scripts run from anywhere.
 
-- **`data_loader.py`** — reads the LIAR `.tsv` splits and applies the binary label mapping.
+- **`src/data_loader.py`** — reads the LIAR `.tsv` splits and applies the binary label mapping.
   `map_label` returns `+1` (FAKE), `-1` (REAL), or `None` (half-true → skip).
-- **`feature_extractor.py`** — all feature engineering (stdlib only, no external deps):
-  `tokenize` (with n-gram support), `TFIDFVectorizer` (fit on train only — fitting on test is
-  leakage), `metadata_features` / `speaker_fake_rate` (LIAR credit-history columns 8–12 → 3
-  numeric features), `retrieve_evidence` (Wikipedia REST lookup for RAG), and `FeatureBuilder`
-  which composes `[TF-IDF | metadata | evidence]` into one vector.
-- **`classification_evaluator.py`** — all metrics implemented from scratch (no sklearn.metrics).
-  `binary_report()` / `multiclass_report()` return dicts; `print_report()` formats them.
+- **`src/feature_extractor.py`** — all feature engineering (stdlib only): `tokenize` (n-gram
+  support), `TFIDFVectorizer` (fit on train only — fitting on test is leakage; vocab keeps the
+  *most document-frequent* qualifying terms), `metadata_features` / `speaker_fake_rate` (LIAR
+  credit-history columns 8–12 → 3 numeric features), `retrieve_evidence` (Wikipedia REST lookup,
+  cached in `data/evidence_cache.json`), and `FeatureBuilder` which composes
+  `[TF-IDF | metadata | evidence]` into one vector.
+- **`src/classification_evaluator.py`** — all metrics implemented from scratch (no
+  sklearn.metrics). `binary_report()` / `multiclass_report()` return dicts.
 
-**⚠️ Two label encodings coexist — this is the most common source of bugs:**
+**⚠️ Two label encodings coexist — the most common source of bugs:**
 - `data_loader` produces `+1` / `-1`.
 - `ClassificationEvaluator` and the sklearn models expect `0` / `1` (`_binary_check` enforces
   `{0,1}`). Models remap at the boundary (e.g. `naive_bayes.evaluate` uses `{+1: 1, -1: 0}`).
   When wiring a new model, convert to `0/1` before evaluating.
 
-**Model tiers** (in rough project chronology; numbering matches `compare_models.py`):
-1. **From-scratch classical** — `naive_bayes.py`, `perceptron.py`, `logistic_regression.py`.
-   Pure Python, binary bag-of-words, no sklearn. These are function-based (train/predict/evaluate),
-   not classes.
-2. **sklearn-wrapped** — `svm_classifier.py` (`SVMClassifier`, RBF) and `mlp_classifier.py`
-   (`MLPFakeNewsClassifier`). Class-based; consume `FeatureBuilder` vectors (TF-IDF + bigrams + metadata).
-3. **BERT family** (Colab/Kaggle) — plain `bert_classifier.py`; metadata via concatenation
-   (`bert_metadata_classifier.py`, `metadatarachna.py`); metadata via **FiLM** modulation of the
-   CLS vector (`bert_film_classifier.py`, `bert_film_v3_earlystop.py`); retrieval-augmented
-   (`rag_classifier.py`). `bert_film_v3` is the deployed model.
-4. **Ensemble** — `ensemble_classifier.py` combines the above by majority and F1-weighted vote.
+**Model packages** (numbering matches `compare_models.py` / the README table):
+- **`src/classical/`** — models 1–5. NB/Perceptron/LR are pure-Python function-based
+  (train/predict/evaluate, binary BOW); SVM/MLP are class-based sklearn wrappers
+  (`SVMClassifier`, `MLPFakeNewsClassifier`) consuming `FeatureBuilder` vectors.
+- **`src/bert/`** — models 6–9 (Colab/Kaggle training scripts): plain fine-tune
+  (`bert_classifier.py`), metadata-concat variants (`bert_metadata_classifier.py`,
+  `metadatarachna.py` — two team variants of Model 6b, both kept), FiLM fusion
+  (`bert_film_classifier.py` v1, `bert_film_v3_earlystop.py` — the deployed winner), RAG
+  (`rag_classifier.py`), and `bert_predict.py` (the only locally-run file: standalone CPU
+  inference, no repo imports, prints JSON to stdout).
+- **`src/analysis/`** — cross-model tooling. Imports classical models via
+  `from classical import naive_bayes as nb` etc. `compare_models.py` hardcodes the baseline
+  numbers and reads BERT/RAG metrics from `results/*.json` rather than recomputing.
+- **`src/app/app.py`** — Streamlit UI. Loads classical models in-process (cached with
+  `@st.cache_resource`, trains at first startup ~3 min) and shells out to
+  `venv_bert/bin/python src/bert/bert_predict.py` for BERT+FiLM. `BASE` (repo root) is derived
+  from `__file__`; BERT options only appear if `models/bert_film_v3/` and `venv_bert/` exist.
+- **`archive/`** — superseded code (old UI). Don't extend; git history has the context.
 
 **Metadata is the project's central research thread.** The advisor's feedback ("name/topic bias
 cannot be fixed by better word representations — the model needs verified information beyond the
 text") drives the metadata features and the FiLM/RAG experiments. When touching feature or model
 code, preserve the metadata pathway.
 
-**App flow** (`app_beautiful.py` / `app.py`): loads the classical + sklearn models in-process
-(cached with `@st.cache_resource`), and shells out to `venv_bert/bin/python bert_predict.py` for
-the BERT+FiLM prediction. `BASE` is hardcoded to `~/fake-finders-liar` and BERT is gated behind
-`models/bert_film_v3/` + `venv_bert/` existing.
-
 ## Data & results
 
-- `data/{train,valid,test}.tsv` are required and must stay in `data/` (paths are relative to repo
-  root). `valid` is for development; `test` is touched only for final numbers.
-- Scripts persist metrics to `results/*.json` (e.g. `comparison_table.json`, `ensemble_results.json`,
-  `bert_results.json`, `rag_results.json`). `compare_models.py` reads BERT/RAG numbers from these
-  files rather than recomputing them.
+- `data/{train,valid,test}.tsv` are required (paths derived from repo root). `valid` is for
+  development; `test` is touched only for final numbers.
+- `data/evidence_cache.json` caches Wikipedia lookups — delete it to force fresh retrieval.
+- Scripts persist metrics to `results/*.json`; `compare_models.py` and the README table are the
+  canonical summaries. If a model is retrained and numbers change, update both.
