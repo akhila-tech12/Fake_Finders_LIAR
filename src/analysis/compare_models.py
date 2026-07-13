@@ -218,6 +218,22 @@ if __name__ == "__main__":
             "recall": 0, "f1": 0, "time": 0,
         })
 
+    # ── Model 10: BERT + FiLM + RAG (Kaggle results) ──────────────────────────
+    film_rag_path = os.path.join(RESULTS, "bert_film_rag_results.json")
+    if os.path.exists(film_rag_path):
+        with open(film_rag_path) as f:
+            fr = json.load(f)
+        all_results.append({
+            "model"    : "10. BERT + FiLM + RAG",
+            "accuracy" : fr.get("accuracy",  0),
+            "precision": fr.get("precision", 0),
+            "recall"   : fr.get("recall",    0),
+            "f1"       : fr.get("f1",        0),
+            "time"     : fr.get("time",      0),
+        })
+    else:
+        print("  FiLM+RAG results not found — run bert_film_rag.py on Kaggle")
+
     # ── Print final table ─────────────────────────────────────────────────────
     print_comparison(all_results)
 

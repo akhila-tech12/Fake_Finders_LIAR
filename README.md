@@ -21,11 +21,20 @@ labels are collapsed to binary; the ambiguous `half-true` class is excluded.
 | 7 | BERT + RAG (Wikipedia) | 68.64% | Transformer | ❌ |
 | 8 | BERT + metadata concat | 67.43% | Transformer | ✅ |
 | 9 | **BERT + FiLM (differential LR)** | **78.18%** 🏆 | Transformer | ✅ |
+| 10 | BERT + FiLM + RAG (v2 retrieval) | 77.45% | Transformer | ✅ |
 
 **Key finding:** metadata (speaker credibility history) matters more than model
 capacity — but *how* it is fused matters even more. Simple concatenation adds
 +0.19%; FiLM (Feature-wise Linear Modulation) with differential learning rates
 adds +10.94% over text-only BERT.
+
+**Evidence finding (models 7 vs 10):** Wikipedia evidence *at inference only*
+(model 7) barely helps — and with high-coverage retrieval it actively hurts a
+statement-only model (F1 collapses 0.72→0.33 on valid as evidence grows; see
+`results/rag_ab_valid.json`). Trained *with* evidence as a BERT text pair
+(model 10), the collapse disappears: F1 77.45% with the best balance of all
+models (MCC 0.492, AUC 0.827, both above the F1 champion). Evidence must be
+present during training to be usable at inference.
 
 ## Project structure
 
@@ -38,7 +47,8 @@ adds +10.94% over text-only BERT.
 │   ├── feature_extractor.py         shared: tokenizer, TF-IDF, metadata, evidence
 │   ├── classification_evaluator.py  shared: all metrics from scratch
 │   ├── classical/       models 1–5 (NB, Perceptron, LR, SVM, MLP)
-│   ├── bert/            models 6–9 — trained on Colab/Kaggle GPUs + bert_predict.py
+│   ├── bert/            models 6–10 — trained on Colab/Kaggle GPUs + bert_predict.py
+│   │                    + evidence_retriever.py / build_evidence.py (v2 Wikipedia RAG)
 │   ├── analysis/        compare_models, ensemble, error analysis
 │   └── app/app.py       Streamlit demo UI
 ├── tests/               pytest suite for the shared modules
@@ -62,6 +72,25 @@ venv_bert/bin/pip install -r requirements_bert.txt
 The trained BERT+FiLM weights (`models/bert_film_v3/`, ~840 MB) are not in git.
 Train `src/bert/bert_film_v3_earlystop.py` on Colab/Kaggle and place the output
 in `models/bert_film_v3/`. The app works without them (classical models only).
+
+### Model 10 — BERT + FiLM + RAG workflow
+
+Evidence is retrieved locally once, then uploaded to Kaggle with the TSVs
+(Kaggle has no reliable network access):
+
+```bash
+# 1. build data/evidence_all.json (cached; resumes if interrupted, ~1 h once)
+venv_bert/bin/python src/bert/build_evidence.py
+
+# 2. on Kaggle: upload TSVs + evidence_all.json, set env vars per the
+#    docstring in src/bert/bert_film_rag.py, run it, download the output
+#    into models/bert_film_rag/  (+ copy the metrics JSON to results/)
+
+# 3. re-evaluate the old RAG model with improved retrieval (A/B):
+venv_bert/bin/python src/bert/rag_classifier.py --split valid --legacy   # baseline
+venv_bert/bin/python src/bert/rag_classifier.py --split valid \
+    --evidence data/evidence_all.json                                    # new arm
+```
 
 ## Usage
 

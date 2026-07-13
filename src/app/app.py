@@ -59,9 +59,80 @@ html,body,[class*="css"]{font-family:'Space Grotesk',sans-serif!important}
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE       = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 BERT_PATH  = os.path.join(BASE, "models", "bert_film_v3")
+RAG_PATH   = os.path.join(BASE, "models", "bert_film_rag")
 VENV_BERT  = os.path.join(BASE, "venv_bert", "bin", "python")
 BERT_SCRIPT= os.path.join(BASE, "src", "bert", "bert_predict.py")
 BERT_OK    = os.path.exists(BERT_PATH) and os.path.exists(VENV_BERT)
+RAG_OK     = os.path.exists(RAG_PATH) and os.path.exists(VENV_BERT)
+
+
+# ── Evidence retrieval ────────────────────────────────────────────────────────
+# Prefer the v2 retriever (Wikipedia search + disambiguation filtering +
+# lexical reranking — no torch in-process, matching the app's venv). Training
+# evidence was reranked semantically (MiniLM); the app reranks lexically —
+# an accepted train/serve gap for the demo, search + filtering are identical.
+# Falls back to the legacy title-guess retrieval if anything goes wrong.
+@st.cache_resource(show_spinner=False)
+def _get_retriever():
+    try:
+        from bert.evidence_retriever import EvidenceRetriever
+        return EvidenceRetriever(reranker="lexical")
+    except Exception:
+        return None
+
+
+def get_evidence(statement: str) -> str:
+    retriever = _get_retriever()
+    if retriever is not None:
+        try:
+            return retriever.retrieve_text(statement)
+        except Exception:
+            pass
+    from feature_extractor import retrieve_evidence
+    return retrieve_evidence(statement)
+
+
+# ── Speaker credibility lookup ────────────────────────────────────────────────
+# LIAR rows carry each speaker's credit-history totals (columns 8-12). The
+# demo's text box can't know who said a statement, so this map lets the user
+# name the speaker and get the same metadata features the evaluation uses.
+# Built from train.tsv only — test rows never inform the demo.
+@st.cache_resource(show_spinner=False)
+def load_speaker_history() -> dict:
+    speakers: dict[str, list[str]] = {}
+    train_path = os.path.join(BASE, "data", "train.tsv")
+    try:
+        with open(train_path, encoding="utf-8") as fh:
+            for line in fh:
+                row = line.rstrip("\n").split("\t")
+                if len(row) < 13 or not row[4].strip():
+                    continue
+                name = row[4].strip().lower()
+                try:
+                    total = sum(int(row[i] or 0) for i in range(8, 13))
+                except ValueError:
+                    continue
+                best = speakers.get(name)
+                if best is None or total > sum(int(best[i] or 0) for i in range(8, 13)):
+                    speakers[name] = row
+    except Exception:
+        pass
+    return speakers
+
+
+def resolve_speaker(name: str):
+    """Return (meta_row, meta_str, fake_rate) for a speaker, or neutral defaults."""
+    from feature_extractor import metadata_features, speaker_fake_rate
+    neutral_row = [""] * 13
+    neutral_row[8:13] = ["0", "0", "0", "0", "0"]
+    key = name.strip().lower().replace(" ", "-")
+    if not key:
+        return neutral_row, "0.5,0.5,0.5", None
+    row = load_speaker_history().get(key)
+    if row is None:
+        return neutral_row, "0.5,0.5,0.5", None
+    meta = metadata_features(row)
+    return row, ",".join(f"{m:.4f}" for m in meta), speaker_fake_rate(row)
 
 
 # ── Load classical models once ────────────────────────────────────────────────
@@ -132,17 +203,19 @@ def load_models():
     }
 
 
-def run_predict(statement, model_name, models):
+def run_predict(statement, model_name, models,
+                meta_row=None, meta_str="0.5,0.5,0.5"):
     import numpy as np, math
-    from feature_extractor import retrieve_evidence
     from classical import naive_bayes as nb_mod
     from classical import perceptron as perc_mod
     from classical import logistic_regression as lr_mod
 
-    dummy_row = [""] * 13
-    dummy_row[8:13] = ["0","0","0","0","0"]
+    dummy_row = meta_row
+    if dummy_row is None:
+        dummy_row = [""] * 13
+        dummy_row[8:13] = ["0","0","0","0","0"]
     t0 = time.perf_counter()
-    evidence = retrieve_evidence(statement)
+    evidence = get_evidence(statement)
 
     if model_name == "Naive Bayes":
         priors, likelihoods, vocab_nb = models["nb"]
@@ -182,7 +255,7 @@ def run_predict(statement, model_name, models):
         try:
             result = subprocess.run(
                 [VENV_BERT, BERT_SCRIPT, statement,
-                 BERT_PATH, "0.5,0.5,0.5"],
+                 BERT_PATH, meta_str],
                 capture_output=True, text=True, timeout=120
             )
             # Get last line of output (JSON)
@@ -204,7 +277,26 @@ def run_predict(statement, model_name, models):
         try:
             result = subprocess.run(
                 [VENV_BERT, BERT_SCRIPT, statement,
-                BERT_PATH, "0.5,0.5,0.5", evidence],
+                BERT_PATH, meta_str, evidence],
+                capture_output=True, text=True, timeout=120
+            )
+            lines = [l for l in result.stdout.strip().split('\n')
+                    if l.startswith('{')]
+            if lines:
+                data  = json.loads(lines[-1])
+                pred  = 1 if data["is_fake"] else 0
+                proba = data["confidence"]
+            else:
+                pred = 0; proba = 0.5
+        except Exception as e:
+            pred = 0; proba = 0.5
+    elif model_name == "BERT+FiLM+RAG ★" and RAG_OK:
+        # Model 10: pair-encoded evidence (bert_predict.py switches encoding
+        # via the model dir's model_config.json)
+        try:
+            result = subprocess.run(
+                [VENV_BERT, BERT_SCRIPT, statement,
+                RAG_PATH, meta_str, evidence],
                 capture_output=True, text=True, timeout=120
             )
             lines = [l for l in result.stdout.strip().split('\n')
@@ -298,8 +390,22 @@ with p2:
         if BERT_OK:
             model_options.append("BERT+FiLM ★")
             model_options.append("BERT+RAG ★")
+        if RAG_OK:
+            model_options.append("BERT+FiLM+RAG ★")
         model_choice = st.selectbox("model", model_options,
                                     label_visibility="collapsed")
+        st.markdown('<div class="tile-label" style="margin-top:6px">SPEAKER '
+                    '(OPTIONAL)</div>', unsafe_allow_html=True)
+        speaker_name = st.text_input("speaker", key="speaker",
+            placeholder="e.g. facebook-posts, mitt-romney",
+            label_visibility="collapsed")
+        meta_row, meta_str, known_rate = resolve_speaker(speaker_name)
+        if speaker_name.strip():
+            if known_rate is not None:
+                st.caption(f"✓ known speaker — historical fake rate "
+                           f"{known_rate:.0%} (from training data)")
+            else:
+                st.caption("speaker not in training data — using neutral metadata")
         go = st.button("🔍 Check", use_container_width=True, type="primary")
         if not BERT_OK:
             st.info("ℹ️ BERT+FiLM model not found in models/bert_film_v3/")
@@ -310,7 +416,8 @@ if go and statement.strip():
                   if "BERT" in model_choice else "Analysing..."
     with st.spinner(spinner_msg):
         models_loaded = load_models()
-        result = run_predict(statement, model_choice, models_loaded)
+        result = run_predict(statement, model_choice, models_loaded,
+                             meta_row=meta_row, meta_str=meta_str)
 
     r1, r2, r3 = st.columns([1, 1, 2], gap="medium")
     verdict_key   = "tile-verdict-fake" if result["is_fake"] else "tile-verdict-real"

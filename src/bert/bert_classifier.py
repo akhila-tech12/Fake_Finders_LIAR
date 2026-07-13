@@ -53,9 +53,9 @@ try:
     from transformers                      import (
         BertTokenizerFast,
         BertForSequenceClassification,
-        AdamW,
         get_linear_schedule_with_warmup,
     )
+    # AdamW moved: transformers removed its copy — use torch.optim.AdamW
     from sklearn.metrics                   import (
         accuracy_score,
         precision_recall_fscore_support,
@@ -251,7 +251,7 @@ class BERTFakeNewsClassifier:
         total_steps  = len(train_dl) * self.epochs
         warmup_steps = int(total_steps * self.warmup_ratio)
 
-        optimizer = AdamW(
+        optimizer = torch.optim.AdamW(
             self._model.parameters(),
             lr           = self.lr,
             weight_decay = 0.01,
@@ -408,8 +408,8 @@ class BERTFakeNewsClassifier:
 if __name__ == "__main__":
 
     if not _DEPS_OK:
-        print("Install dependencies first:")
-        print("  pip install transformers torch scikit-learn")
+        print(f"Dependency import failed: {_DEPS_ERR}")
+        print("If packages are missing: pip install transformers torch scikit-learn")
         sys.exit(1)
 
     BASE  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

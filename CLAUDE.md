@@ -46,15 +46,30 @@ venv/bin/streamlit run src/app/app.py
 **BERT inference locally** (CPU, called by the app as a subprocess):
 ```bash
 venv_bert/bin/python src/bert/bert_predict.py "statement text" models/bert_film_v3 "0.5,0.5,0.5"
+# 4th arg = evidence string; if the model dir has model_config.json with
+# pair_encoding, statement+evidence are encoded as a BERT text pair
 ```
+
+**Evidence retrieval (v2 RAG path)** — locally run, venv_bert for the semantic reranker:
+```bash
+venv_bert/bin/python src/bert/build_evidence.py --split valid --report  # intrinsic stats
+venv_bert/bin/python src/bert/build_evidence.py                         # all splits → data/evidence_all.json
+venv_bert/bin/python src/bert/rag_classifier.py --split valid --legacy  # A/B baseline arm
+venv_bert/bin/python src/bert/rag_classifier.py --split valid --evidence data/evidence_all.json
+```
+Wikipedia requests are globally rate-limited (~1 req/s; Wikimedia 429-blocks the whole IP
+across all API families otherwise). Cache: `data/evidence_cache_v2.json` (fetch failures
+are never cached — interrupted builds resume cleanly).
 
 Shared modules also run standalone smoke tests via `__main__`
 (e.g. `venv/bin/python src/feature_extractor.py`).
 
-**BERT/FiLM training is NOT run locally.** Everything in `src/bert/` except `bert_predict.py`
-is written for **Google Colab / Kaggle GPUs**. The trained artifact lives in
-`models/bert_film_v3/` (weights are gitignored — ~840 MB, obtained from Kaggle) and is
-consumed at inference time.
+**BERT/FiLM training is NOT run locally.** Everything in `src/bert/` except `bert_predict.py`,
+`evidence_retriever.py` and `build_evidence.py` is written for **Google Colab / Kaggle GPUs**.
+Trained artifacts live in `models/bert_film_v3/` (deployed champion) and `models/bert_film_rag/`
+(model 10, needs `data/evidence_all.json` uploaded to Kaggle; local dry run:
+`MAX_SAMPLES=50 EPOCHS=1 venv_bert/bin/python src/bert/bert_film_rag.py`). Weights are
+gitignored (~840 MB each, obtained from Kaggle) and consumed at inference time.
 
 ## Architecture
 
