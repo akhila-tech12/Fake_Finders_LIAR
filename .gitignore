@@ -10,6 +10,11 @@ venv_bert/
 # large model weights — download from Kaggle or GitHub release (see README)
 models/**/*.pt
 models/**/*.bin
+models/**/*.safetensors
+results/bert_model/
+
+# regenerable retrieval cache (96 MB — evidence_all.json is the durable artifact)
+data/evidence_cache_v2.json
 
 # streamlit
 .streamlit/
