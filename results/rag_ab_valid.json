@@ -1,0 +1,24 @@
+{
+  "experiment": "A/B retrieval on valid split, plain-BERT checkpoint (results/bert_model, retrained 2026-07-09), speaker-rate overrides on, chromadb off",
+  "arms": {
+    "no_evidence": {
+      "accuracy": 0.6824,
+      "precision": 0.754,
+      "recall": 0.6916,
+      "f1": 0.7215
+    },
+    "evidence_400_chars": {
+      "accuracy": 0.6293,
+      "precision": 0.7311,
+      "recall": 0.5958,
+      "f1": 0.6565
+    },
+    "evidence_900_chars": {
+      "accuracy": 0.547,
+      "precision": 0.7866,
+      "recall": 0.2094,
+      "f1": 0.3308
+    }
+  },
+  "conclusion": "Inference-time evidence concatenation HURTS a statement-only-trained BERT, monotonically with evidence length: encyclopedic text biases predictions toward REAL (recall collapses). Better retrieval coverage makes this WORSE, not better. Evidence must be present at TRAINING time (bert_film_rag.py, text-pair encoding) for the model to learn to use it. This also reinterprets the historical RAG +1.4pp over plain BERT: with ~50% retrieval misses the model often saw no evidence, and gains likely came from the metadata/fact-check overrides."
+}

@@ -68,12 +68,28 @@ def predict(statement, model_path, meta_str):
 
     # If evidence provided, combine with statement (RAG style)
     evidence = sys.argv[4] if len(sys.argv) > 4 else ""
-    combined  = f"{statement} [SEP] {evidence}" if evidence else statement
 
-    enc    = tokenizer(
-        combined, truncation=True, padding="max_length",
-        max_length=256, return_tensors="pt",
-    )
+    # model_config.json (written by bert_film_rag.py) switches on text-PAIR
+    # encoding to match how that model was trained. Absent (bert_film_v3),
+    # the original string-concat path runs unchanged.
+    cfg_path = os.path.join(model_path, "model_config.json")
+    cfg      = {}
+    if os.path.exists(cfg_path):
+        with open(cfg_path) as fh:
+            cfg = json.load(fh)
+    max_len = int(cfg.get("max_len", 256))
+
+    if cfg.get("pair_encoding") and evidence:
+        enc = tokenizer(
+            statement, evidence, truncation="only_second",
+            padding="max_length", max_length=max_len, return_tensors="pt",
+        )
+    else:
+        combined = f"{statement} [SEP] {evidence}" if evidence else statement
+        enc = tokenizer(
+            combined, truncation=True, padding="max_length",
+            max_length=max_len, return_tensors="pt",
+        )
     meta_t = torch.tensor([meta], dtype=torch.float32)
 
     with torch.no_grad():

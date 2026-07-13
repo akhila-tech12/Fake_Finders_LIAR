@@ -1,0 +1,5 @@
+{
+  "max_len": 256,
+  "pair_encoding": true,
+  "uses_evidence": true
+}

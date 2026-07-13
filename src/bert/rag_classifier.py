@@ -74,6 +74,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 from classification_evaluator import ClassificationEvaluator, print_report
 from feature_extractor        import retrieve_evidence, speaker_fake_rate
+from bert.evidence_retriever  import EvidenceRetriever
 
 # ── LIAR label helpers ────────────────────────────────────────────────────────
 _FAKE = frozenset({"pants-fire", "false", "barely-true"})
@@ -267,18 +268,39 @@ class RAGClassifier:
         self,
         bert_dir:       str,               # path to saved fine-tuned BERT
         google_api_key: str   = "",
-        use_chromadb:   bool  = True,
+        use_chromadb:   bool  = False,     # generic topic facts — opt-in only
         max_len:        int   = 256,       # longer to fit evidence too
         device:         Optional[str] = None,
+        evidence_file:  Optional[str] = None,  # precomputed {liar_id: evidence}
+        legacy_retrieval: bool = False,    # v1 title-guess path (A/B baseline)
+        evidence_budget:  int  = 900,      # v2 evidence cap (legacy stays 400)
     ) -> None:
         if not _TORCH_OK:
             raise ImportError("pip install transformers torch")
 
-        self.max_len   = max_len
+        self.max_len          = max_len
+        self.legacy_retrieval = legacy_retrieval
+        self.evidence_budget  = evidence_budget
         self.device    = torch.device(
             device if device
             else ("cuda" if torch.cuda.is_available() else "cpu")
         )
+
+        # ── Evidence source hierarchy ─────────────────────────────────────────
+        # 1. precomputed evidence file (fast eval / Kaggle parity)
+        # 2. live EvidenceRetriever (search + rerank, v2 cache)
+        # 3. legacy retrieve_evidence (title guessing — baseline arm only)
+        self._evidence_map: Optional[dict] = None
+        if evidence_file:
+            with open(evidence_file, encoding="utf-8") as fh:
+                self._evidence_map = json.load(fh)
+            print(f"  Precomputed evidence: {len(self._evidence_map)} entries")
+
+        self._retriever: Optional[EvidenceRetriever] = None
+        if not legacy_retrieval:
+            self._retriever = EvidenceRetriever(
+                reranker="auto", evidence_budget=evidence_budget
+            )
 
         # ── Load fine-tuned BERT ──────────────────────────────────────────────
         print(f"  Loading BERT from {bert_dir}...")
@@ -315,25 +337,34 @@ class RAGClassifier:
 
     # ── evidence retrieval ───────────────────────────────────────────────────
 
-    def _get_evidence(self, statement: str) -> str:
+    def _get_evidence(self, statement: str,
+                      row: Optional[list[str]] = None) -> str:
         """
-        Gather all available evidence for a statement.
+        Gather evidence for a statement via the source hierarchy:
+        precomputed file → live EvidenceRetriever → legacy title-guessing.
 
-        Combines Wikipedia + ChromaDB into one evidence string.
+        ChromaDB topic facts are appended only when explicitly enabled.
         """
+        # 1. Precomputed evidence (keyed by LIAR id)
+        if self._evidence_map is not None and row is not None:
+            return self._evidence_map.get(row[0].strip(), "")
+
         parts: list[str] = []
-
-        # Wikipedia
-        wiki = retrieve_evidence(statement)
+        if self._retriever is not None:
+            wiki = (self._retriever.retrieve(row) if row is not None
+                    else self._retriever.retrieve_text(statement))
+            cap  = self.evidence_budget
+        else:
+            wiki = retrieve_evidence(statement)          # legacy v1 path
+            cap  = 400
         if wiki:
             parts.append(wiki)
 
-        # ChromaDB
+        # ChromaDB (opt-in)
         if self._kb:
-            kb_facts = self._kb.retrieve(statement, k=2)
-            parts.extend(kb_facts)
+            parts.extend(self._kb.retrieve(statement, k=2))
 
-        return " ".join(parts)[:400]   # cap at 400 chars for BERT window
+        return " ".join(parts)[:cap]
 
     # ── BERT forward pass ─────────────────────────────────────────────────────
 
@@ -380,12 +411,19 @@ class RAGClassifier:
             float in [0, 1].
         """
         # 1. Retrieve evidence
-        evidence = self._get_evidence(statement)
+        evidence = self._get_evidence(statement, row)
 
         # 2. BERT prediction with evidence
         prob = self._bert_predict(statement, evidence)
 
-        # 3. Speaker credibility adjustment
+        # 3./4. Metadata + fact-check adjustments
+        return self._adjust_prob(prob, statement, row)
+
+    def _adjust_prob(self, prob: float, statement: str,
+                     row: Optional[list[str]] = None) -> float:
+        """Speaker-credibility and fact-check overrides (identical in both
+        A/B arms — only the retrieval path varies between them)."""
+        # Speaker credibility adjustment
         if row is not None:
             fake_rate = speaker_fake_rate(row)
             if fake_rate > 0.80:       # highly unreliable speaker
@@ -393,7 +431,7 @@ class RAGClassifier:
             elif fake_rate < 0.20:     # highly reliable speaker
                 prob = max(prob - 0.10, 0.01)
 
-        # 4. Fact-check override (only if very confident)
+        # Fact-check override (only if very confident)
         fc_signal = self._fact_check.signal(statement)
         if fc_signal == 1 and prob < 0.4:
             prob = 0.65   # fact-check says fake, BERT uncertain → lean fake
@@ -407,34 +445,68 @@ class RAGClassifier:
         """Return class label (1=fake, 0=real)."""
         return int(self.predict_proba(statement, row) >= 0.5)
 
-    def evaluate(self, test_path: str) -> dict:
-        """Evaluate on LIAR test split."""
+    def evaluate(self, test_path: str, batch_size: int = 32) -> dict:
+        """
+        Evaluate on a LIAR split with a batched BERT forward pass.
+
+        Evidence comes from the configured source hierarchy; with a
+        precomputed evidence file the whole split runs in minutes on CPU.
+        The returned dict includes "time" (seconds) — results/rag_results.json
+        keeps that key.
+        """
         print(f"\n  Evaluating RAG on {os.path.basename(test_path)}...")
+        t0 = time.time()
 
-        y_true: list[int] = []
-        y_pred: list[int] = []
-
+        rows:   list[list[str]] = []
+        y_true: list[int]       = []
         with open(test_path, encoding="utf-8") as f:
-            lines = [l for l in f if l.strip()]
+            for line in f:
+                parts = line.strip().split("\t")
+                if len(parts) < 3:
+                    continue
+                lbl = _map_label(parts[1])
+                if lbl is None:
+                    continue
+                rows.append(parts)
+                y_true.append(lbl)
 
-        for i, line in enumerate(lines, 1):
-            parts = line.strip().split("\t")
-            if len(parts) < 3:
-                continue
-            lbl = _map_label(parts[1])
-            if lbl is None:
-                continue
+        # Batch-friendly evidence: live retriever parallelises, cache/file hit
+        # costs nothing on re-runs.
+        if self._evidence_map is None and self._retriever is not None:
+            self._retriever.retrieve_batch(rows)          # warm the cache
+        evidences = [self._get_evidence(r[2].strip(), r) for r in rows]
 
-            text = parts[2].strip()
-            pred = self.predict(text, row=parts)
+        combined = [
+            f"{r[2].strip()} [SEP] {ev}" if ev else r[2].strip()
+            for r, ev in zip(rows, evidences)
+        ]
 
-            y_true.append(lbl)
-            y_pred.append(pred)
+        probs: list[float] = []
+        for i in range(0, len(combined), batch_size):
+            enc = self._tokenizer(
+                combined[i : i + batch_size],
+                truncation     = True,
+                padding        = True,
+                max_length     = self.max_len,
+                return_tensors = "pt",
+            )
+            enc = {k: v.to(self.device) for k, v in enc.items()}
+            with torch.no_grad():
+                logits = self._model(**enc).logits
+                batch  = torch.softmax(logits, dim=1)[:, 1]
+            probs.extend(float(p) for p in batch)
+            done = min(i + batch_size, len(combined))
+            if done % (batch_size * 10) < batch_size:
+                print(f"    {done}/{len(combined)} processed...")
 
-            if i % 100 == 0:
-                print(f"    {i}/{len(lines)} processed...")
+        y_pred = [
+            int(self._adjust_prob(p, r[2].strip(), r) >= 0.5)
+            for p, r in zip(probs, rows)
+        ]
 
-        return ClassificationEvaluator(y_true, y_pred).binary_report()
+        report = ClassificationEvaluator(y_true, y_pred).binary_report()
+        report["time"] = round(time.time() - t0, 1)
+        return report
 
     def __repr__(self) -> str:
         kb_size = len(self._kb) if self._kb else 0
@@ -449,25 +521,56 @@ class RAGClassifier:
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    import argparse
 
     if not _TORCH_OK:
         print("Install: pip install transformers torch")
         sys.exit(1)
 
-    BASE      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    TEST      = os.path.join(BASE, "data", "test.tsv")
-    BERT_DIR  = os.path.join(BASE, "results", "bert_model")
+    BASE     = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    BERT_DIR = os.path.join(BASE, "results", "bert_model")
+
+    parser = argparse.ArgumentParser(description="BERT+RAG evaluation (A/B)")
+    parser.add_argument("--split", choices=("valid", "test"), default="test",
+                        help="valid for development, test for final numbers")
+    parser.add_argument("--legacy", action="store_true",
+                        help="baseline arm: v1 title-guess retrieval + ChromaDB")
+    parser.add_argument("--evidence", default=None, metavar="JSON",
+                        help="precomputed evidence file (data/evidence_all.json)")
+    parser.add_argument("--save", action="store_true",
+                        help="write results/rag_results.json (test split only)")
+    args = parser.parse_args()
+
+    SPLIT_PATH = os.path.join(BASE, "data", f"{args.split}.tsv")
 
     if not os.path.exists(BERT_DIR):
         print(f"ERROR: Fine-tuned BERT not found at {BERT_DIR}")
         print("Run bert_classifier.py first to fine-tune and save BERT.")
         sys.exit(1)
 
-    print("=== RAG Classifier — LIAR Dataset ===\n")
+    arm = "legacy (baseline)" if args.legacy else "improved retrieval"
+    print(f"=== RAG Classifier — LIAR {args.split} — {arm} ===\n")
 
-    clf     = RAGClassifier(bert_dir=BERT_DIR, use_chromadb=_CHROMA_OK)
-    results = clf.evaluate(TEST)
-    print_report("BERT + RAG — Test Results", results)
+    clf = RAGClassifier(
+        bert_dir         = BERT_DIR,
+        use_chromadb     = _CHROMA_OK and args.legacy,   # part of the old recipe
+        legacy_retrieval = args.legacy,
+        evidence_file    = args.evidence,
+    )
+    results = clf.evaluate(SPLIT_PATH)
+    print_report(f"BERT + RAG ({arm}) — {args.split} results", results)
+
+    if args.save:
+        if args.split != "test":
+            print("--save ignored: canonical results come from the test split")
+        else:
+            out = os.path.join(BASE, "results", "rag_results.json")
+            keep = {k: results[k]
+                    for k in ("accuracy", "precision", "recall", "f1", "time")
+                    if k in results}
+            with open(out, "w", encoding="utf-8") as fh:
+                json.dump(keep, fh, indent=2)
+            print(f"\n✓ saved → {out}")
 
     # ── Demo ──────────────────────────────────────────────────────────────────
     print("\n=== Example Predictions with Evidence ===\n")
