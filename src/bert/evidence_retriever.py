@@ -543,6 +543,18 @@ class EvidenceRetriever:
             return ""
         return self._retrieve(f"text::{statement}", statement, subject, speaker)
 
+    def retrieve_candidates(self, statement: str) -> list[dict]:
+        """
+        Raw search candidates [{"title", "extract"}, …] for a bare statement —
+        no reranking, no assembly, no caching. For verification pipelines
+        (verify_claim.py) that scan every candidate sentence themselves.
+        """
+        statement = statement.strip()
+        if not statement:
+            return []
+        _, candidates, _ = self._gather_candidates(build_queries(statement))
+        return candidates or []
+
     def retrieve_batch(self, rows: list[list[str]],
                        max_workers: int = 8) -> dict[str, str]:
         """

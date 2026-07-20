@@ -115,3 +115,54 @@ venv/bin/python -m pytest tests/
 
 LIAR dataset © original sources, research use only
 (Wang, "Liar, Liar Pants on Fire", ACL 2017). See `data/README`.
+
+## References
+
+**Dataset**
+
+1. Wang, W. Y. (2017). *"Liar, Liar Pants on Fire": A New Benchmark Dataset for
+   Fake News Detection.* ACL 2017 (short papers). arXiv:1705.00648
+
+**Models 6–10 — architecture**
+
+2. Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). *BERT: Pre-training
+   of Deep Bidirectional Transformers for Language Understanding.* NAACL-HLT 2019.
+   arXiv:1810.04805 — the `bert-base-uncased` encoder behind models 6–10.
+3. Perez, E., Strub, F., de Vries, H., Dumoulin, V., & Courville, A. (2018).
+   *FiLM: Visual Reasoning with a General Conditioning Layer.* AAAI 2018.
+   arXiv:1709.07871 — the γ/β feature-wise modulation used in `FiLMLayer`
+   (`src/bert/bert_film_classifier.py`) to fuse metadata into the [CLS] vector.
+   **This is the source of model 9's +10.94% over text-only BERT.**
+4. Howard, J., & Ruder, S. (2018). *Universal Language Model Fine-tuning for Text
+   Classification.* ACL 2018. arXiv:1801.06146 — discriminative fine-tuning, i.e.
+   the differential learning rates (lower for BERT, higher for the FiLM head)
+   used in `bert_film_v3_earlystop.py`.
+
+**Models 7 & 10 — retrieval**
+
+5. Lewis, P., et al. (2020). *Retrieval-Augmented Generation for Knowledge-Intensive
+   NLP Tasks.* NeurIPS 2020. arXiv:2005.11401 — the retrieve-then-read framing
+   behind the Wikipedia evidence pathway.
+6. Thorne, J., Vlachos, A., Christodoulopoulos, C., & Mittal, A. (2018). *FEVER:
+   a Large-scale Dataset for Fact Extraction and VERification.* NAACL-HLT 2018.
+   arXiv:1803.05355 — the document-retrieval → sentence-selection → entailment
+   pipeline that `src/bert/verify_claim.py` follows.
+
+**Claim verification (`verify_claim.py`)**
+
+7. He, P., Liu, X., Gao, J., & Chen, W. (2021). *DeBERTa: Decoding-enhanced BERT
+   with Disentangled Attention.* ICLR 2021. arXiv:2006.03654
+8. Williams, A., Nangia, N., & Bowman, S. (2018). *A Broad-Coverage Challenge Corpus
+   for Sentence Understanding through Inference (MultiNLI).* NAACL-HLT 2018.
+   arXiv:1704.05426
+9. Nie, Y., Williams, A., Dinan, E., Bansal, M., Weston, J., & Kiela, D. (2020).
+   *Adversarial NLI: A New Benchmark for Natural Language Understanding.* ACL 2020.
+   arXiv:1910.14599
+
+   The NLI checkpoint `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli` is a DeBERTa-v3
+   model fine-tuned on the MNLI + FEVER-NLI + ANLI mixture (refs 6–9).
+
+**Data source**
+
+10. Wikipedia / Wikimedia REST + Action APIs — evidence retrieval
+    (`src/bert/evidence_retriever.py`). Content under CC BY-SA 4.0.

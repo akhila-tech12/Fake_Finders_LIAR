@@ -16,7 +16,9 @@ packaging==26.2
 PyYAML==6.0.3
 regex==2026.6.28
 requests==2.34.2
+protobuf==7.35.1
 safetensors==0.8.0
+sentencepiece==0.2.2
 sympy==1.14.0
 tokenizers==0.14.1
 torch==2.12.1

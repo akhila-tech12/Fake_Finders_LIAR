@@ -35,6 +35,9 @@ html,body,[class*="css"]{font-family:'Space Grotesk',sans-serif!important}
 .st-key-tile-best{background:linear-gradient(135deg,rgba(168,85,247,.14),rgba(168,85,247,.04));border-color:rgba(168,85,247,.35)}
 .st-key-tile-verdict-fake{background:rgba(232,85,85,.13);border-color:rgba(232,85,85,.45)}
 .st-key-tile-verdict-real{background:rgba(23,165,137,.13);border-color:rgba(23,165,137,.45)}
+.st-key-tile-verify-sup{background:rgba(23,165,137,.13);border-color:rgba(23,165,137,.45)}
+.st-key-tile-verify-ref{background:rgba(232,85,85,.13);border-color:rgba(232,85,85,.45)}
+.st-key-tile-verify-nei{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.18)}
 .st-key-tile-evidence{background:rgba(41,128,185,.07);border-color:rgba(41,128,185,.3)}
 .st-key-tile-score-5{background:linear-gradient(135deg,rgba(168,85,247,.14),rgba(168,85,247,.04));border-color:rgba(168,85,247,.35)}
 
@@ -64,6 +67,9 @@ VENV_BERT  = os.path.join(BASE, "venv_bert", "bin", "python")
 BERT_SCRIPT= os.path.join(BASE, "src", "bert", "bert_predict.py")
 BERT_OK    = os.path.exists(BERT_PATH) and os.path.exists(VENV_BERT)
 RAG_OK     = os.path.exists(RAG_PATH) and os.path.exists(VENV_BERT)
+
+VERIFY_SCRIPT = os.path.join(BASE, "src", "bert", "verify_claim.py")
+VERIFY_OK     = os.path.exists(VERIFY_SCRIPT) and os.path.exists(VENV_BERT)
 
 
 # ── Evidence retrieval ────────────────────────────────────────────────────────
@@ -327,6 +333,26 @@ def run_predict(statement, model_name, models,
     }
 
 
+# ── Evidence check (FEVER-style NLI verification) ─────────────────────────────
+# Independent of the LIAR classifiers: retrieves Wikipedia candidates and runs
+# claim-vs-evidence entailment in venv_bert (same subprocess pattern as BERT
+# inference). Cached per statement, so re-checking the same claim is instant.
+@st.cache_data(show_spinner=False)
+def run_verify(statement: str):
+    try:
+        result = subprocess.run(
+            [VENV_BERT, VERIFY_SCRIPT, statement, "--json"],
+            capture_output=True, text=True, timeout=180
+        )
+        lines = [l for l in result.stdout.strip().split("\n") if l.startswith("{")]
+        if lines:
+            return json.loads(lines[-1])
+        print(f"VERIFY STDERR: {result.stderr[:300]}", file=sys.stderr)
+    except Exception as e:
+        print(f"VERIFY ERROR: {e}", file=sys.stderr)
+    return None
+
+
 # ── Bento grid ────────────────────────────────────────────────────────────────
 
 def _fill_example(ex):
@@ -406,6 +432,11 @@ with p2:
                            f"{known_rate:.0%} (from training data)")
             else:
                 st.caption("speaker not in training data — using neutral metadata")
+        verify_on = st.checkbox("Evidence check (NLI fact verification)",
+                                value=VERIFY_OK, disabled=not VERIFY_OK,
+                                help="Retrieves Wikipedia evidence and checks "
+                                     "whether it supports or refutes the claim "
+                                     "(~20-30 s, runs in venv_bert)")
         go = st.button("🔍 Check", use_container_width=True, type="primary")
         if not BERT_OK:
             st.info("ℹ️ BERT+FiLM model not found in models/bert_film_v3/")
@@ -419,10 +450,35 @@ if go and statement.strip():
         result = run_predict(statement, model_choice, models_loaded,
                              meta_row=meta_row, meta_str=meta_str)
 
+    ver = None
+    if verify_on:
+        with st.spinner("Evidence check: reading Wikipedia & running NLI… ~20-30 s"):
+            ver = run_verify(statement)
+
+    # Decision fusion (cascade): a decisive evidence check outranks the LIAR
+    # classifier — verified facts beat learned style patterns. When the
+    # evidence is inconclusive (NEI / unavailable) the classifier decides.
+    FUSION_MIN_CONF = 0.85
+    if ver and ver["verdict"] == "REFUTED" and ver["confidence"] >= FUSION_MIN_CONF:
+        final_fake, basis = True, "evidence"
+    elif ver and ver["verdict"] == "SUPPORTED" and ver["confidence"] >= FUSION_MIN_CONF:
+        final_fake, basis = False, "evidence"
+    else:
+        final_fake, basis = result["is_fake"], "model"
+
     r1, r2, r3 = st.columns([1, 1, 2], gap="medium")
-    verdict_key   = "tile-verdict-fake" if result["is_fake"] else "tile-verdict-real"
-    verdict_color = "#E85555" if result["is_fake"] else "#17A589"
-    verdict_icon  = "🚨" if result["is_fake"] else "✅"
+    verdict_key   = "tile-verdict-fake" if final_fake else "tile-verdict-real"
+    verdict_color = "#E85555" if final_fake else "#17A589"
+    verdict_icon  = "🚨" if final_fake else "✅"
+    final_label   = "FAKE" if final_fake else "REAL"
+    if basis == "evidence":
+        agree = (final_fake == result["is_fake"])
+        basis_note = ("decided by evidence check · model agrees" if agree else
+                      f"decided by evidence check · overrides model "
+                      f"({result['label']} {result['confidence']:.0%})")
+    else:
+        basis_note = (f"model verdict ({result['model_used']})"
+                      + (" · evidence inconclusive" if ver else ""))
     with r1:
         with st.container(key=verdict_key):
             st.markdown(f"""
@@ -430,18 +486,25 @@ if go and statement.strip():
             <div style="text-align:center">
                 <div style="font-size:2.6rem">{verdict_icon}</div>
                 <div style="font-size:2.2rem;font-weight:800;color:{verdict_color}">
-                    {result['label']}</div>
+                    {final_label}</div>
+                <div style="font-size:10px;color:#4A6A80;font-family:'JetBrains Mono',monospace;
+                            margin-top:6px">{basis_note}</div>
             </div>""", unsafe_allow_html=True)
     with r2:
         with st.container(key="tile-confidence"):
+            if basis == "evidence":
+                conf_val, conf_src = ver["confidence"], "NLI evidence check"
+            else:
+                conf_val = result["confidence"]
+                conf_src = f"{result['model_used']} · {result['time_ms']:.0f}ms"
             st.markdown(f"""
             <div class="tile-label">CONFIDENCE</div>
             <div style="text-align:center">
                 <div style="font-size:2.4rem;font-weight:800;color:{verdict_color};
                             font-family:'JetBrains Mono',monospace">
-                    {result['confidence']:.0%}</div>
+                    {conf_val:.0%}</div>
                 <div style="font-size:11px;color:#4A6A80;font-family:'JetBrains Mono',monospace">
-                    {result['model_used']} · {result['time_ms']:.0f}ms</div>
+                    {conf_src}</div>
             </div>""", unsafe_allow_html=True)
     with r3:
         with st.container(key="tile-evidence"):
@@ -455,6 +518,42 @@ if go and statement.strip():
                             unsafe_allow_html=True)
             else:
                 st.markdown("ℹ️ No Wikipedia evidence found.")
+
+    # Row 3b · evidence check detail — what the evidence says, independent of
+    # what the LIAR classifier thinks the claim sounds like (ver computed above).
+    if verify_on:
+        if ver is None:
+            st.warning("Evidence check unavailable (see terminal for details).")
+        else:
+            style = {
+                "SUPPORTED":       ("tile-verify-sup", "#17A589", "✅",
+                                    "Wikipedia evidence SUPPORTS this claim"),
+                "REFUTED":         ("tile-verify-ref", "#E85555", "❌",
+                                    "Wikipedia evidence REFUTES this claim"),
+                "NOT ENOUGH INFO": ("tile-verify-nei", "#A8C4D8", "❓",
+                                    "Evidence inconclusive — not verifiable "
+                                    "from Wikipedia intros"),
+            }[ver["verdict"]]
+            key, color, icon, headline = style
+            with st.container(key=key):
+                st.markdown(f"""
+                <div class="tile-label">EVIDENCE CHECK · NLI FACT VERIFICATION</div>
+                <div style="font-size:1.3rem;font-weight:800;color:{color}">
+                    {icon} {ver['verdict']}
+                    <span style="font-size:.85rem;font-family:'JetBrains Mono',monospace">
+                        ({ver['confidence']:.0%})</span></div>
+                <div style="font-size:12px;color:#A8C4D8;margin-top:4px">{headline}</div>""",
+                unsafe_allow_html=True)
+                if ver.get("deciding_evidence"):
+                    st.markdown(
+                        f'<div class="ev-box" style="margin-top:10px">'
+                        f'“{ver["deciding_evidence"]}”<br>'
+                        f'<span style="font-size:11px;color:#4A6A80">— Wikipedia: '
+                        f'{ver.get("source_page","")}</span></div>',
+                        unsafe_allow_html=True)
+                pages = ", ".join(ver.get("pages_scanned", [])[:6])
+                if pages:
+                    st.caption(f"pages scanned: {pages}")
 elif go:
     st.warning("Please enter a statement!")
 
